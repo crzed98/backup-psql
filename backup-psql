@@ -1,0 +1,149 @@
+#!/bin/bash
+
+check_options(){
+
+    if [ $# -eq 0 ]
+    then
+        echo "backup-psql --help for more information"
+        exit 1
+    fi
+
+    for i in "$@"; do
+        case $i in
+        -h=*|--host=*)
+            HOST="${i#*=}"
+            shift # past argument=value
+            ;;
+        -p=*|--port=*)
+            PORT="${i#*=}"
+            shift # past argument=value
+            ;;
+        -u=*|--user=*)
+            PSUSER="${i#*=}"
+            shift # past argument=value
+            ;;
+        -ps=*|--password=*)
+            PASSWORD="${i#*=}"
+            shift # past argument=value
+            ;;
+        -bp=*|--backup_path=*)
+            BACKUP_PATH="${i#*=}"
+            shift # past argument=value
+            ;;
+        -d=*|--db_name=*)
+            DB_NAME="${i#*=}"
+            shift # past argument=value
+            ;;
+        --help)
+            echo "Usage: "
+            echo "    backup-psql [OPTIONS]"
+            echo ""
+            echo "Options:"
+            echo "    --help"
+            echo "    -h=, --host=<ip|domain>     PostgreSQL server host"
+            echo "                                If not specified then localhost will be used."
+            echo "    -p=, --port=<port>          PostgreSQL server port. "
+            echo "                                If not specified then standart port 5432 will be used."
+            echo "    -u=, --user=<DB user>       PostgreSQL server user"
+            echo "    -ps=, --password=<password> PostgreSQL server user password"
+            echo "    -bp=, --backup_path=<path>  Path to backup folder"
+            echo "                                If not specified then current working directory will be used."
+            echo "    -d=, --db_name=<DB name>    Name of PostgreSQL Data Base. "
+            echo "                                If not specified then all data bases will be backuped."
+            echo ""
+            echo "Example: "
+            echo "    backup-psql -h=127.0.0.1 -p=5432 -u=dbuser -ps=1234 -bp=./ -d=mydatabase"
+            echo "    backup-psql -u=dbuser -ps=1234"
+            exit 0
+            ;;
+        -*|--*)
+            echo "Unknown option $i"
+            echo "backup-psql --help for more information"
+            exit 1
+            ;;
+        esac
+    done
+
+    if [ -z "${HOST}" ]
+    then
+        HOST="localhost"
+    fi
+
+    if [ -z "${PORT}" ]
+    then
+        PORT="5432"
+    fi
+
+    if [ -z "${BACKUP_PATH}" ]
+    then
+        BACKUP_PATH="./"
+    fi
+    if [ -z "${PASSWORD}" ] || [ -z "${PSUSER}" ]
+    then
+        echo "Please, enter login details."
+        exit 1
+    fi
+
+}
+
+get_bases_list(){
+    echo $(psql --dbname=postgresql://${PSUSER}:${PASSWORD}@${HOST}:${PORT}/postgres?sslmode=require -c "SELECT datname FROM pg_database WHERE datistemplate = false;" | tail -n +3 | head -n -2 | sed 's/ //')
+    #echo $(psql --dbname=postgresql://${PSUSER}:${PASSWORD}@${HOST}:${PORT}/postgres?options=-c%20%22SELECT%20datname%20FROM%20pg_database%20WHERE%20datistemplate%20%3D%20false%3B%22&sslmode=require | tail -n +1 | sed '$d' | sed 's/ //')
+}
+
+check_directory(){
+    if [ ! -d "${BACKUP_PATH}" ]
+    then
+        echo $(mkdir "$BACKUP_PATH")
+        echo "$BACKUP_PATH directory not found. Creating."
+        BACKUP_PATH+="/"
+    fi
+}
+check_psql_error(){
+    local output=$1
+    if echo "${output}" | grep -q '^pg_dump: error:'
+    then
+        echo "${output}"
+        echo ""
+        echo "Error while running script. Exiting script."
+        exit 1
+    fi
+
+}
+backup_db(){
+
+check_directory BACKUP_PATH
+
+    if [ -z "$DB_NAME" ]
+    then
+
+        local bases_list=$(get_bases_list)
+
+        for base in ${bases_list[@]}; do
+
+            local PG_DUMP_OUTPUT=$(pg_dump --dbname="postgresql://${PSUSER}:${PASSWORD}@${HOST}:${PORT}/${base}" 2>&1) 
+            check_psql_error "${PG_DUMP_OUTPUT}"
+            echo "${PG_DUMP_OUTPUT}" > "${BACKUP_PATH}${base}_$(date +'%m-%d-%Y--%H-%M-%S').dump"
+            echo "${base} was dumped."
+
+        done
+        echo $'\nAll DB was dumped.'               
+    else
+
+        local PG_DUMP_OUTPUT=$(pg_dump --dbname="postgresql://${PSUSER}:${PASSWORD}@${HOST}:${PORT}/${DB_NAME}" 2>&1) 
+        check_psql_error "${PG_DUMP_OUTPUT}"
+        echo "${PG_DUMP_OUTPUT}" > "${BACKUP_PATH}${DB_NAME}_$(date +'%m-%d-%Y--%H-%M-%S').dump"
+        echo "${DB_NAME} was dumped."
+
+    fi
+
+}
+
+main() {
+    check_options "$@"
+    backup_db
+}
+
+
+main "$@"
+exit 0
