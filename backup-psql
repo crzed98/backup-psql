@@ -88,7 +88,6 @@ check_options(){
 
 get_bases_list(){
     echo $(psql --dbname=postgresql://${PSUSER}:${PASSWORD}@${HOST}:${PORT}/postgres?sslmode=require -c "SELECT datname FROM pg_database WHERE datistemplate = false;" | tail -n +3 | head -n -2 | sed 's/ //')
-    #echo $(psql --dbname=postgresql://${PSUSER}:${PASSWORD}@${HOST}:${PORT}/postgres?options=-c%20%22SELECT%20datname%20FROM%20pg_database%20WHERE%20datistemplate%20%3D%20false%3B%22&sslmode=require | tail -n +1 | sed '$d' | sed 's/ //')
 }
 
 check_directory(){
