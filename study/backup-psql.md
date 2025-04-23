@@ -1,1 +1,1 @@
-https://github.com/crzed98/backup-psql
+https://github.com/crzed/backup-psql
